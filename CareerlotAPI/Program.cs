@@ -1,9 +1,8 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Add Controller Support
 builder.Services.AddControllers();
 
-// 2. Enable CORS so your React app (port 5173) can talk to this API
+// Enable CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("VitePolicy", policy =>

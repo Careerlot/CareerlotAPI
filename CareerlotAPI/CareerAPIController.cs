@@ -18,25 +18,45 @@ public class CareerAPIController : ControllerBase
     [HttpPost("analyse")]
     public async Task<IActionResult> Analyse([FromBody] string cvText)
     {
-        var apiKey = _configuration["Gemini:ApiKey"];
-        var url = _configuration[$"https://googleapis.com{apiKey}"];
+        var apiKey = _configuration["OpenRouter:ApiKey"];
+        var url = "https://openrouter.ai/api/v1/chat/completions";
         
         var requestBody = new
         {
-            contents = new[] {
-                new { parts = new[] { new { text = $"Analyze this CV and suggest 4 career pivots in JSON format with 'title' and 'desc' keys: {cvText}" } } }
-            }
+            model= "liquid/lfm-2.5-1.2b-instruct:free",
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content= $"Analyse the following CV and provide a summary of the candidate's skills, experience, and potential job matches. Return ONLY a JSON array with 'title' and 'desc' keys: \n\n{cvText}"
+                }
+            },
         };
 
         var client =  _httpClientFactory.CreateClient();
-        var response = await client.PostAsync(url, new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"));
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        var response = await client.PostAsJsonAsync(url, requestBody);
+        
         if (!response.IsSuccessStatusCode) 
         {
             var errorDetails = await response.Content.ReadAsStringAsync();
             return StatusCode((int)response.StatusCode, errorDetails);
         }        
-        var jsonResponse = await response.Content.ReadAsStringAsync();
-        return Ok(jsonResponse);
+        var jsonResponse = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var aiTextParse = jsonResponse.GetProperty("choices")
+                                 .EnumerateArray()
+                                 .First()
+                                 .GetProperty("message")
+                                 .GetProperty("content")
+                                 .GetString();
+        
+        var cleanJson = System.Text.RegularExpressions.Regex.Match(aiTextParse, @"\[[\s\S]*\]").Value;
+        if(string.IsNullOrEmpty(cleanJson))
+        {
+            return BadRequest("AI response did not contain valid JSON.");
+        }
+        return Ok(cleanJson);
     }
     
     
